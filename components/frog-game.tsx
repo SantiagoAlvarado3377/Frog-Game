@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Trophy, RotateCcw } from "lucide-react"
@@ -9,52 +9,182 @@ type Question = {
   question: string
   options: string[]
   correctAnswer: number
+  category: string
+  explanation: string
 }
 
-const questions: Question[] = [
+// All available questions from Greener Davis Game
+const allQuestions: Question[] = [
+  // Stormwater
   {
-    question: "What percentage of Earth's surface is covered by water?",
-    options: ["50%", "60%", "71%", "80%"],
-    correctAnswer: 2,
+    question: "What should you do if you accidentally drop trash on the ground?",
+    options: ["Pick it up right away", "Walk away and leave it", "Try to remember to come back and pick it up later"],
+    correctAnswer: 0,
+    category: "Stormwater",
+    explanation: "Always pick up litter immediately. Every piece of litter is important.",
   },
   {
-    question: "How long should you turn off the tap while brushing your teeth to save water?",
-    options: ["Don't turn it off", "Only when done", "While brushing", "Just at the start"],
-    correctAnswer: 2,
+    question: "After you put something in your outdoor trash bin, what should you do?",
+    options: ["Make sure the trash bin lid closes completely", "Leave the lid open"],
+    correctAnswer: 0,
+    category: "Stormwater",
+    explanation: "Leaving the lid open could cause wind to blow the trash away and cause litter. Always keep the lids to outdoor trash bins closed.",
+  },
+  // Water Conservation
+  {
+    question: "What should you do if you find a leaky faucet?",
+    options: ["Tell someone so it can get repaired", "Ignore it. It's just a little drip."],
+    correctAnswer: 0,
+    category: "Water Conservation",
+    explanation: "Water is precious and every drop counts.",
   },
   {
-    question: "Which of these uses the most water at home?",
-    options: ["Washing dishes", "Taking a shower", "Flushing the toilet", "Watering plants"],
-    correctAnswer: 1,
+    question: "What is the best time to water your yard?",
+    options: ["Early morning or at night", "Noon", "Anytime", "Afternoon"],
+    correctAnswer: 0,
+    category: "Water Conservation",
+    explanation: "Watering during the early morning or at night prevents water from being lost due to evaporation during the warmer and sunnier parts of the day.",
+  },
+  // Recycling
+  {
+    question: "What should you do with a large empty cardboard box?",
+    options: [
+      "Flatten it and place it on the ground next to the recycling cart",
+      "Stuff it in the recycling cart",
+      "Throw it in the trash",
+    ],
+    correctAnswer: 0,
+    category: "Recycling",
+    explanation: "Empty and flattened cardboard boxes can be recycled if they are placed on the ground for collection.",
   },
   {
-    question: "What is the best way to water your garden?",
-    options: ["Midday sun", "Early morning", "Anytime", "Late afternoon"],
-    correctAnswer: 1,
+    question: "What should you do with an apple core?",
+    options: ["Place it in the organics bin", "Place it in the trash", "It doesn't matter which bin you put it in"],
+    correctAnswer: 0,
+    category: "Recycling",
+    explanation: "Always place food scraps in the organics bin so they can be turned into compost.",
   },
   {
-    question: "How much of Earth's water is fresh water we can drink?",
-    options: ["50%", "25%", "10%", "Less than 3%"],
-    correctAnswer: 3,
+    question: "Which statement is true about recyclables?",
+    options: [
+      "Don't bag recyclables – place recyclables loose in the recycling cart",
+      "It's ok to put bagged recyclables in your recycling cart",
+    ],
+    correctAnswer: 0,
+    category: "Recycling",
+    explanation: "Recyclables should never be in a plastic bag. If you collect your recyclables in a bag, empty the bag into the recycling cart, then put the bag in the trash.",
+  },
+  // IPM (Integrated Pest Management)
+  {
+    question: "Which statement is true about insects?",
+    options: ["Not all insects are bad – many are helpful", "All insects are harmful to your garden"],
+    correctAnswer: 0,
+    category: "IPM",
+    explanation: "There are many insects that are helpful partners in your garden.",
   },
   {
-    question: "Which animal needs clean water to survive, just like us?",
-    options: ["Only fish", "Only frogs", "All animals", "Only birds"],
-    correctAnswer: 2,
+    question: "If you have a fruit tree at home, what should you do?",
+    options: ["Pick up fallen fruit to prevent pests", "Leave the fruit on the ground, it won't matter"],
+    correctAnswer: 0,
+    category: "IPM",
+    explanation: "Picking up fallen fruit helps discourage pests from coming into your yard. Leaving fallen fruit on the ground can attract pests like wasps and rats.",
+  },
+  // Pretreatment
+  {
+    question: "What should you do with extra oils and grease after cooking?",
+    options: [
+      "Wipe up small amounts with paper towels and place them in the organics bin",
+      "Pour oils and grease down the drain",
+    ],
+    correctAnswer: 0,
+    category: "Pretreatment",
+    explanation: "Never pour grease or oil down the drain, it will clog your sewer pipes.",
   },
   {
-    question: "What happens when we pollute rivers and lakes?",
-    options: ["Nothing changes", "Water gets cleaner", "Animals and plants suffer", "Water tastes better"],
-    correctAnswer: 2,
+    question: "Is it OK to flush wipes down the toilet?",
+    options: ["No", "Yes, wipes are ok to flush"],
+    correctAnswer: 0,
+    category: "Pretreatment",
+    explanation: "The toilet is not a trash can. Wipes clog pipes. Only flush poo, pee and toilet paper.",
   },
+  // Wildlife
   {
-    question: "How can you help save water when washing your hands?",
-    options: ["Use hot water only", "Keep tap running", "Turn off while soaping", "Use more soap"],
-    correctAnswer: 2,
+    question: "Is it ok to feed ducks and geese at a pond?",
+    options: ["No", "Yes, especially if they look hungry"],
+    correctAnswer: 0,
+    category: "Wildlife",
+    explanation: "Never feed wild animals, it does more harm than good. Wild animals are capable of finding their own food.",
+  },
+  // Water Quality
+  {
+    question: "What's the better environmental choice?",
+    options: ["Drink tap water instead of buying bottled water", "Always buy bottled water"],
+    correctAnswer: 0,
+    category: "Water Quality",
+    explanation: "Davis tap water meets all State and Federal drinking water standards. Buying bottled water increases plastic waste, plus there's the environmental footprint of producing and shipping bottled water.",
   },
 ]
 
+// Fisher-Yates shuffle algorithm to randomize questions
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return shuffled
+}
+
+// Select 8 random questions ensuring category diversity
+function selectQuestions(): Question[] {
+  const shuffled = shuffleArray(allQuestions)
+  const selected: Question[] = []
+  const categoryCounts: { [key: string]: number } = {}
+
+  // Try to get diverse categories
+  for (const question of shuffled) {
+    const count = categoryCounts[question.category] || 0
+    // Limit each category to max 3 questions to ensure diversity
+    if (count < 3 && selected.length < 8) {
+      selected.push(question)
+      categoryCounts[question.category] = count + 1
+    }
+  }
+
+  // If we need more questions to reach 8, add remaining ones
+  for (const question of shuffled) {
+    if (selected.length >= 8) break
+    if (!selected.includes(question)) {
+      selected.push(question)
+    }
+  }
+
+  return selected
+}
+
+// Generate random lily pad positions that progress left to right
+function generateLilyPadPositions(): Array<{ left: number; top: number }> {
+  const positions: Array<{ left: number; top: number }> = []
+  
+  for (let i = 0; i < 8; i++) {
+    const progress = i / 7
+    // Add randomness to horizontal position but keep general left-to-right progression
+    const baseLeft = 5 + progress * 90
+    const leftVariation = (Math.random() - 0.5) * 8 // +/- 4% variation
+    const left = Math.max(5, Math.min(95, baseLeft + leftVariation))
+    
+    // Randomize vertical position within safe bounds
+    const top = 25 + Math.random() * 50 // Random between 25% and 75%
+    
+    positions.push({ left, top })
+  }
+  
+  return positions
+}
+
 export default function FrogGame() {
+  const [questions, setQuestions] = useState<Question[]>([])
+  const [lilyPadPositions, setLilyPadPositions] = useState<Array<{ left: number; top: number }>>([])
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [score, setScore] = useState(0)
   const [showFeedback, setShowFeedback] = useState<"correct" | "wrong" | null>(null)
@@ -63,8 +193,14 @@ export default function FrogGame() {
   const [gameComplete, setGameComplete] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
 
+  // Generate both questions and lily pad positions only on client side to avoid hydration mismatch
+  useEffect(() => {
+    setQuestions(selectQuestions())
+    setLilyPadPositions(generateLilyPadPositions())
+  }, [])
+
   const handleAnswer = (answerIndex: number) => {
-    if (showFeedback) return
+    if (showFeedback || questions.length === 0) return
 
     setSelectedAnswer(answerIndex)
     const isCorrect = answerIndex === questions[currentQuestion].correctAnswer
@@ -105,6 +241,17 @@ export default function FrogGame() {
     setIsFalling(false)
     setGameComplete(false)
     setSelectedAnswer(null)
+    // Note: questions remain the same for this game session
+    // To get new random questions, the component would need to be remounted
+  }
+
+  // Show loading state while questions are being generated
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 flex items-center justify-center p-4">
+        <div className="text-2xl font-bold text-primary">Loading game...</div>
+      </div>
+    )
   }
 
   if (gameComplete) {
@@ -115,7 +262,7 @@ export default function FrogGame() {
             <Trophy className="w-24 h-24 text-accent animate-bounce" />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-primary">Congratulations! 🎉</h1>
-          <p className="text-2xl md:text-3xl font-semibold text-foreground">Professor Dave crossed the river!</p>
+          <p className="text-2xl md:text-3xl font-semibold text-foreground">Professor Davis crossed the river!</p>
           <p className="text-xl text-muted-foreground">
             You answered <span className="font-bold text-primary">{score}</span> out of{" "}
             <span className="font-bold">{questions.length}</span> questions correctly!
@@ -138,10 +285,10 @@ export default function FrogGame() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2 text-balance">
-            Professor Dave's River Adventure
+            Professor Davis's River Adventure
           </h1>
           <p className="text-lg md:text-xl text-foreground/80">
-            Help Professor Dave cross the river by answering questions!
+            Help Professor Davis cross the river by answering questions!
           </p>
         </div>
 
@@ -209,13 +356,12 @@ export default function FrogGame() {
                     const isCurrent = index === score
                     const isNext = index === score + 1
 
-                    const progress = index / 7
-                    const leftPosition = 5 + progress * 90 // Spread from 5% to 95% for maximum spacing
-
-                    // Create more dramatic vertical variation with different patterns
-                    const waveOffset = Math.sin(progress * Math.PI * 2) * 35 // Increased amplitude
-                    const zigzagOffset = (index % 2 === 0 ? 1 : -1) * 15 // Add zigzag pattern
-                    const topPosition = 50 + waveOffset + zigzagOffset
+                    // Use randomized positions if available, otherwise use default positions
+                    const position = lilyPadPositions[index] || {
+                      left: 5 + (index / 7) * 90,
+                      top: 50,
+                    }
+                    const { left: leftPosition, top: topPosition } = position
 
                     return (
                       <div
@@ -279,20 +425,27 @@ export default function FrogGame() {
           </Card>
 
           {/* Question Card */}
-          <Card className="p-6 md:p-8 bg-white/95 backdrop-blur">
-            <div className="space-y-6">
+          <Card className="p-6 md:p-8 bg-white/95 backdrop-blur h-[400px] md:h-[500px] flex flex-col">
+            <div className="space-y-4 flex-1 overflow-y-auto">
               <div className="text-center">
-                <div className="inline-block px-4 py-2 bg-secondary/20 rounded-full mb-4">
-                  <span className="text-sm font-semibold text-secondary-foreground">
-                    Question {currentQuestion + 1} of {questions.length}
-                  </span>
+                <div className="flex justify-center gap-2 mb-3 flex-wrap">
+                  <div className="inline-block px-3 py-1.5 bg-secondary/20 rounded-full">
+                    <span className="text-xs md:text-sm font-semibold text-secondary-foreground">
+                      Question {currentQuestion + 1} of {questions.length}
+                    </span>
+                  </div>
+                  <div className="inline-block px-3 py-1.5 bg-accent/30 rounded-full">
+                    <span className="text-xs md:text-sm font-semibold text-accent-foreground">
+                      {questions[currentQuestion].category}
+                    </span>
+                  </div>
                 </div>
-                <h2 className="text-2xl md:text-3xl font-bold text-foreground text-balance">
+                <h2 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground leading-tight break-words">
                   {questions[currentQuestion].question}
                 </h2>
               </div>
 
-              <div className="grid gap-3">
+              <div className="grid gap-2.5">
                 {questions[currentQuestion].options.map((option, index) => (
                   <Button
                     key={index}
@@ -302,7 +455,7 @@ export default function FrogGame() {
                     variant={
                       selectedAnswer === index ? (showFeedback === "correct" ? "default" : "destructive") : "outline"
                     }
-                    className={`text-lg py-6 transition-all ${
+                    className={`text-sm md:text-base py-4 md:py-6 transition-all whitespace-normal h-auto min-h-[3rem] text-left ${
                       selectedAnswer === index && showFeedback === "correct"
                         ? "bg-primary hover:bg-primary/90 scale-105"
                         : selectedAnswer === index && showFeedback === "wrong"
@@ -318,13 +471,18 @@ export default function FrogGame() {
               {/* Feedback Messages */}
               {showFeedback && (
                 <div
-                  className={`text-center p-4 rounded-lg font-semibold text-lg animate-in fade-in slide-in-from-bottom-4 ${
+                  className={`text-center p-3 rounded-lg animate-in fade-in slide-in-from-bottom-4 ${
                     showFeedback === "correct" ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive"
                   }`}
                 >
-                  {showFeedback === "correct"
-                    ? "🎉 Great job! Professor Dave jumps forward!"
-                    : "💦 Oops! Try again - Professor Dave fell in the water!"}
+                  <p className="font-semibold text-base md:text-lg mb-1.5">
+                    {showFeedback === "correct"
+                      ? "🎉 Great job! Professor Davis jumps forward!"
+                      : "💦 Oops! Try again - Professor Davis fell in the water!"}
+                  </p>
+                  <p className="text-xs md:text-sm opacity-90 leading-relaxed break-words">
+                    {questions[currentQuestion].explanation}
+                  </p>
                 </div>
               )}
             </div>
