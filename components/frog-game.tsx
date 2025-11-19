@@ -194,6 +194,98 @@ export default function FrogGame() {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [reducedMotion, setReducedMotion] = useState(false)
   const [highContrast, setHighContrast] = useState(false)
+  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large' | 'xlarge'>('medium')
+  const [dyslexiaFont, setDyslexiaFont] = useState(false)
+  const [audioEnabled, setAudioEnabled] = useState(true)
+  const [speechEnabled, setSpeechEnabled] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+
+  // Audio feedback functions
+  const playSound = (type: 'correct' | 'incorrect' | 'jump' | 'complete') => {
+    if (!audioEnabled) return
+    
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+    
+    switch (type) {
+      case 'correct':
+        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime) // C5
+        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1) // E5
+        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2) // G5
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + 0.3)
+        break
+      case 'incorrect':
+        oscillator.frequency.setValueAtTime(200, audioContext.currentTime)
+        oscillator.frequency.setValueAtTime(150, audioContext.currentTime + 0.1)
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2)
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + 0.2)
+        break
+      case 'jump':
+        oscillator.frequency.setValueAtTime(400, audioContext.currentTime)
+        oscillator.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.1)
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1)
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + 0.1)
+        break
+      case 'complete':
+        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime)
+        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.15)
+        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.3)
+        oscillator.frequency.setValueAtTime(1046.50, audioContext.currentTime + 0.45)
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.6)
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + 0.6)
+        break
+    }
+  }
+
+  // Text-to-speech function
+  const speak = (text: string) => {
+    if (!speechEnabled || typeof window === 'undefined') return
+    
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel()
+    
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 0.9
+    utterance.pitch = 1
+    utterance.volume = 1
+    
+    utterance.onstart = () => setIsSpeaking(true)
+    utterance.onend = () => setIsSpeaking(false)
+    utterance.onerror = () => setIsSpeaking(false)
+    
+    window.speechSynthesis.speak(utterance)
+  }
+
+  const stopSpeaking = () => {
+    if (typeof window !== 'undefined') {
+      window.speechSynthesis.cancel()
+      setIsSpeaking(false)
+    }
+  }
+
+  // Auto-speak question when speech is enabled
+  useEffect(() => {
+    if (speechEnabled && questions.length > 0 && !gameComplete) {
+      const question = questions[score]
+      if (question) {
+        speak(`Question ${score + 1} of ${questions.length}. ${question.question}`)
+      }
+    }
+    return () => stopSpeaking()
+  }, [score, speechEnabled, questions, gameComplete])
 
   // Generate both questions and lily pad positions only on client side to avoid hydration mismatch
   useEffect(() => {
@@ -267,6 +359,11 @@ export default function FrogGame() {
       setShowFeedback("correct")
       setIsJumping(true)
       setScore(score + 1)
+      playSound('jump')
+      
+      setTimeout(() => {
+        playSound('correct')
+      }, 200)
 
       setTimeout(() => {
         setIsJumping(false)
@@ -275,6 +372,7 @@ export default function FrogGame() {
 
         if (currentQuestion + 1 >= questions.length) {
           setGameComplete(true)
+          playSound('complete')
         } else {
           setCurrentQuestion(currentQuestion + 1)
         }
@@ -282,6 +380,7 @@ export default function FrogGame() {
     } else {
       setShowFeedback("wrong")
       setIsFalling(true)
+      playSound('incorrect')
 
       setTimeout(() => {
         setIsFalling(false)
@@ -314,7 +413,7 @@ export default function FrogGame() {
 
   if (gameComplete) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 flex items-center justify-center p-4">
+      <div className={`min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 flex items-center justify-center p-4 font-size-${fontSize} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
         <Card 
           className={`max-w-2xl w-full p-8 text-center space-y-6 backdrop-blur ${highContrast ? 'bg-white border-black border-4' : 'bg-white/95'}`}
           role="alert"
@@ -353,7 +452,7 @@ export default function FrogGame() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 p-4 md:p-8">
+    <div className={`min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 p-4 md:p-8 font-size-${fontSize} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
       {/* Skip to main content link for keyboard users */}
       <a 
         href="#main-content" 
@@ -364,7 +463,7 @@ export default function FrogGame() {
       <div className="max-w-6xl mx-auto" id="main-content">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="flex justify-center gap-4 mb-4">
+          <div className="flex flex-wrap justify-center gap-2 mb-4">
             <Button
               variant="outline"
               size="sm"
@@ -372,7 +471,7 @@ export default function FrogGame() {
               aria-label={reducedMotion ? "Enable animations" : "Reduce motion"}
               title={reducedMotion ? "Enable animations" : "Reduce motion for accessibility"}
             >
-              {reducedMotion ? "🐢 Enable Animations" : "⚡ Reduce Motion"}
+              {reducedMotion ? "🐢 Animations" : "⚡ Reduce Motion"}
             </Button>
             <Button
               variant="outline"
@@ -381,8 +480,65 @@ export default function FrogGame() {
               aria-label={highContrast ? "Disable high contrast" : "Enable high contrast"}
               title={highContrast ? "Disable high contrast mode" : "Enable high contrast for better visibility"}
             >
-              {highContrast ? "🎨 Normal Contrast" : "🔆 High Contrast"}
+              {highContrast ? "🎨 Normal" : "🔆 High Contrast"}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDyslexiaFont(!dyslexiaFont)}
+              aria-label={dyslexiaFont ? "Disable dyslexia font" : "Enable dyslexia-friendly font"}
+              title="Toggle dyslexia-friendly font"
+            >
+              {dyslexiaFont ? "Aa Regular" : "Aa Dyslexia"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const sizes: Array<'small' | 'medium' | 'large' | 'xlarge'> = ['small', 'medium', 'large', 'xlarge']
+                const currentIndex = sizes.indexOf(fontSize)
+                const nextIndex = (currentIndex + 1) % sizes.length
+                setFontSize(sizes[nextIndex])
+              }}
+              aria-label={`Current font size: ${fontSize}. Click to change`}
+              title="Adjust font size"
+            >
+              � Text: {fontSize === 'small' ? 'S' : fontSize === 'medium' ? 'M' : fontSize === 'large' ? 'L' : 'XL'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAudioEnabled(!audioEnabled)}
+              aria-label={audioEnabled ? "Mute sounds" : "Enable sounds"}
+              title="Toggle audio feedback"
+            >
+              {audioEnabled ? "🔊 Sound" : "🔇 Muted"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (speechEnabled) {
+                  stopSpeaking()
+                }
+                setSpeechEnabled(!speechEnabled)
+              }}
+              aria-label={speechEnabled ? "Disable text-to-speech" : "Enable text-to-speech"}
+              title="Toggle text-to-speech"
+            >
+              {speechEnabled ? "🗣️ Speech On" : "💬 Speech Off"}
+            </Button>
+            {isSpeaking && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={stopSpeaking}
+                aria-label="Stop speaking"
+                title="Stop current speech"
+              >
+                ⏸️ Stop
+              </Button>
+            )}
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2 text-balance">
             Professor Davis's River Adventure
@@ -623,13 +779,27 @@ export default function FrogGame() {
                     </span>
                   </div>
                 </div>
-                <h2 
-                  className={`text-xl md:text-2xl lg:text-3xl font-bold leading-tight break-words ${highContrast ? 'text-black' : 'text-foreground'}`}
-                  id="current-question"
-                  tabIndex={-1}
-                >
-                  {questions[currentQuestion].question}
-                </h2>
+                <div className="flex items-start gap-2">
+                  <h2 
+                    className={`text-xl md:text-2xl lg:text-3xl font-bold leading-tight break-words flex-1 ${highContrast ? 'text-black' : 'text-foreground'}`}
+                    id="current-question"
+                    tabIndex={-1}
+                  >
+                    {questions[currentQuestion].question}
+                  </h2>
+                  {speechEnabled && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => speak(`${questions[currentQuestion].question}. ${questions[currentQuestion].options.map((opt, idx) => `Option ${idx + 1}: ${opt}`).join('. ')}`)}
+                      aria-label="Read question aloud"
+                      title="Read question and options"
+                      disabled={isSpeaking}
+                    >
+                      🔊
+                    </Button>
+                  )}
+                </div>
               </div>
 
               <div className="grid gap-2.5" role="group" aria-labelledby="current-question">

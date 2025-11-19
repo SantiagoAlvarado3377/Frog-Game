@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import url('https://fonts.googleapis.com/css2?family=OpenDyslexic&display=swap');
 
 @custom-variant dark (&:is(.dark *));
 
@@ -123,6 +124,64 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Dyslexia-friendly font */
+.dyslexia-font {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', sans-serif;
+}
+
+/* Font size variants */
+.font-size-small {
+  font-size: 0.875rem;
+}
+
+.font-size-small .text-xl {
+  font-size: 1rem;
+}
+
+.font-size-small .text-2xl {
+  font-size: 1.25rem;
+}
+
+.font-size-small .text-4xl {
+  font-size: 2rem;
+}
+
+.font-size-medium {
+  font-size: 1rem;
+}
+
+.font-size-large {
+  font-size: 1.125rem;
+}
+
+.font-size-large .text-xl {
+  font-size: 1.5rem;
+}
+
+.font-size-large .text-2xl {
+  font-size: 1.875rem;
+}
+
+.font-size-large .text-4xl {
+  font-size: 3rem;
+}
+
+.font-size-xlarge {
+  font-size: 1.25rem;
+}
+
+.font-size-xlarge .text-xl {
+  font-size: 1.75rem;
+}
+
+.font-size-xlarge .text-2xl {
+  font-size: 2.25rem;
+}
+
+.font-size-xlarge .text-4xl {
+  font-size: 3.5rem;
 }
 
 /* Fun animations for the frog game */
