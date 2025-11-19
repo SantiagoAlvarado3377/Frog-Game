@@ -192,12 +192,70 @@ export default function FrogGame() {
   const [isFalling, setIsFalling] = useState(false)
   const [gameComplete, setGameComplete] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
+  const [reducedMotion, setReducedMotion] = useState(false)
+  const [highContrast, setHighContrast] = useState(false)
 
   // Generate both questions and lily pad positions only on client side to avoid hydration mismatch
   useEffect(() => {
     setQuestions(selectQuestions())
     setLilyPadPositions(generateLilyPadPositions())
+    
+    // Check for user's reduced motion preference
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    setReducedMotion(mediaQuery.matches)
+    
+    const handleChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches)
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
   }, [])
+
+  // Add keyboard controls
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      // Ignore keyboard input if game is complete or showing feedback
+      if (gameComplete || showFeedback || questions.length === 0) return
+
+      const currentQ = questions[currentQuestion]
+      if (!currentQ) return
+
+      const numOptions = currentQ.options.length
+
+      // Handle number keys (1-9)
+      if (event.key >= '1' && event.key <= '9') {
+        const index = parseInt(event.key) - 1
+        if (index < numOptions) {
+          handleAnswer(index)
+        }
+      }
+      // Handle arrow keys for navigation through options
+      else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault() // Prevent page scroll
+        // Just highlight - could be extended to select on Enter
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [currentQuestion, gameComplete, showFeedback, questions])
+
+  // Announce changes to screen readers
+  useEffect(() => {
+    if (showFeedback && questions[currentQuestion]) {
+      const message = showFeedback === "correct" 
+        ? `Correct! ${questions[currentQuestion].explanation}`
+        : `Incorrect. ${questions[currentQuestion].explanation}`
+      
+      // Create a live region announcement
+      const announcement = document.createElement('div')
+      announcement.setAttribute('role', 'status')
+      announcement.setAttribute('aria-live', 'polite')
+      announcement.className = 'sr-only'
+      announcement.textContent = message
+      document.body.appendChild(announcement)
+      
+      setTimeout(() => document.body.removeChild(announcement), 3000)
+    }
+  }, [showFeedback, currentQuestion, questions])
 
   const handleAnswer = (answerIndex: number) => {
     if (showFeedback || questions.length === 0) return
@@ -257,21 +315,36 @@ export default function FrogGame() {
   if (gameComplete) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 flex items-center justify-center p-4">
-        <Card className="max-w-2xl w-full p-8 text-center space-y-6 bg-white/95 backdrop-blur">
-          <div className="flex justify-center">
-            <Trophy className="w-24 h-24 text-accent animate-bounce" />
+        <Card 
+          className={`max-w-2xl w-full p-8 text-center space-y-6 backdrop-blur ${highContrast ? 'bg-white border-black border-4' : 'bg-white/95'}`}
+          role="alert"
+          aria-live="polite"
+        >
+          <div className="flex justify-center gap-4 items-center">
+            <div className={`frog-character-large ${reducedMotion ? '' : 'animate-bounce'}`}></div>
+            <Trophy className={`w-24 h-24 text-accent ${reducedMotion ? '' : 'animate-bounce'}`} aria-hidden="true" />
+            <div className={`frog-character-large ${reducedMotion ? '' : 'animate-bounce'}`}></div>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-primary">Congratulations! 🎉</h1>
-          <p className="text-2xl md:text-3xl font-semibold text-foreground">Professor Davis crossed the river!</p>
-          <p className="text-xl text-muted-foreground">
-            You answered <span className="font-bold text-primary">{score}</span> out of{" "}
+          <h1 className={`text-4xl md:text-5xl font-bold ${highContrast ? 'text-black' : 'text-primary'}`}>
+            Congratulations! 🎉
+          </h1>
+          <p className={`text-2xl md:text-3xl font-semibold ${highContrast ? 'text-black' : 'text-foreground'}`}>
+            Professor Davis crossed the river!
+          </p>
+          <p className={`text-xl ${highContrast ? 'text-black' : 'text-muted-foreground'}`}>
+            You answered <span className={`font-bold ${highContrast ? 'text-black underline' : 'text-primary'}`}>{score}</span> out of{" "}
             <span className="font-bold">{questions.length}</span> questions correctly!
           </p>
-          <p className="text-lg text-foreground/80 italic">
+          <p className={`text-lg italic ${highContrast ? 'text-black' : 'text-foreground/80'}`}>
             🌊 You're now a Water Conservation Champion! Keep protecting our precious water! 💧
           </p>
-          <Button onClick={resetGame} size="lg" className="text-lg px-8 py-6 bg-primary hover:bg-primary/90">
-            <RotateCcw className="mr-2 h-5 w-5" />
+          <Button 
+            onClick={resetGame} 
+            size="lg" 
+            className={`text-lg px-8 py-6 ${highContrast ? 'bg-black text-white border-4 hover:bg-gray-800' : 'bg-primary hover:bg-primary/90'}`}
+            aria-label="Play the game again from the beginning"
+          >
+            <RotateCcw className="mr-2 h-5 w-5" aria-hidden="true" />
             Play Again
           </Button>
         </Card>
@@ -281,9 +354,36 @@ export default function FrogGame() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
+      {/* Skip to main content link for keyboard users */}
+      <a 
+        href="#main-content" 
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-primary focus:text-primary-foreground focus:px-4 focus:py-2 focus:rounded"
+      >
+        Skip to game content
+      </a>
+      <div className="max-w-6xl mx-auto" id="main-content">
         {/* Header */}
         <div className="text-center mb-8">
+          <div className="flex justify-center gap-4 mb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setReducedMotion(!reducedMotion)}
+              aria-label={reducedMotion ? "Enable animations" : "Reduce motion"}
+              title={reducedMotion ? "Enable animations" : "Reduce motion for accessibility"}
+            >
+              {reducedMotion ? "🐢 Enable Animations" : "⚡ Reduce Motion"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setHighContrast(!highContrast)}
+              aria-label={highContrast ? "Disable high contrast" : "Enable high contrast"}
+              title={highContrast ? "Disable high contrast mode" : "Enable high contrast for better visibility"}
+            >
+              {highContrast ? "🎨 Normal Contrast" : "🔆 High Contrast"}
+            </Button>
+          </div>
           <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2 text-balance">
             Professor Davis's River Adventure
           </h1>
@@ -293,16 +393,23 @@ export default function FrogGame() {
         </div>
 
         {/* Progress Bar */}
-        <div className="mb-8">
+        <div className="mb-8" role="region" aria-label="Game progress">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-semibold text-foreground">Progress</span>
-            <span className="text-sm font-semibold text-foreground">
+            <span className="text-sm font-semibold text-foreground" aria-live="polite">
               {score} / {questions.length}
             </span>
           </div>
-          <div className="h-4 bg-white/50 rounded-full overflow-hidden">
+          <div 
+            className="h-4 bg-white/50 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-valuenow={score}
+            aria-valuemin={0}
+            aria-valuemax={questions.length}
+            aria-label={`Progress: ${score} out of ${questions.length} questions correct`}
+          >
             <div
-              className="h-full bg-primary transition-all duration-500 ease-out rounded-full"
+              className={`h-full bg-primary rounded-full ${reducedMotion ? '' : 'transition-all duration-500 ease-out'}`}
               style={{ width: `${(score / questions.length) * 100}%` }}
             />
           </div>
@@ -310,29 +417,73 @@ export default function FrogGame() {
 
         <div className="grid md:grid-cols-2 gap-8">
           {/* River Visualization */}
-          <Card className="p-6 bg-sky-200 border-4 border-primary/20 overflow-hidden">
+          <Card 
+            className={`p-6 bg-sky-200 border-4 overflow-hidden relative ${highContrast ? 'border-black border-8' : 'border-primary/20'}`}
+            role="img" 
+            aria-label={`River crossing visualization. Professor Davis has crossed ${score} out of ${questions.length} lily pads.`}
+          >
             <div className="relative h-[400px] md:h-[500px]">
               {/* Left Riverbank with grass and trees */}
               <div className="absolute left-0 top-0 bottom-0 w-16 md:w-20 bg-gradient-to-r from-green-700 to-green-600 rounded-l-lg border-r-4 border-green-800">
                 <div className="absolute inset-0 flex flex-col justify-around items-center py-4">
-                  <span className="text-2xl">🌳</span>
-                  <span className="text-2xl">🌲</span>
-                  <span className="text-2xl">🌳</span>
-                  <span className="text-xl">🌿</span>
+                  <div className={reducedMotion ? "" : "animate-bounce"} style={reducedMotion ? {} : { animationDelay: "0s", animationDuration: "3s" }}>
+                    <div className="css-tree"></div>
+                  </div>
+                  <div className={reducedMotion ? "" : "animate-bounce"} style={reducedMotion ? {} : { animationDelay: "0.5s", animationDuration: "3.5s" }}>
+                    <div className="css-tree"></div>
+                  </div>
+                  <div className={reducedMotion ? "" : "animate-bounce"} style={reducedMotion ? {} : { animationDelay: "1s", animationDuration: "4s" }}>
+                    <div className="css-tree"></div>
+                  </div>
+                  <span className={reducedMotion ? "text-xl" : "text-xl animate-pulse"} style={reducedMotion ? {} : { animationDelay: "0.3s" }}>
+                    🌿
+                  </span>
                 </div>
               </div>
 
               {/* Right Riverbank with grass and trees */}
               <div className="absolute right-0 top-0 bottom-0 w-16 md:w-20 bg-gradient-to-l from-green-700 to-green-600 rounded-r-lg border-l-4 border-green-800">
                 <div className="absolute inset-0 flex flex-col justify-around items-center py-4">
-                  <span className="text-2xl">🌳</span>
-                  <span className="text-xl">🌿</span>
-                  <span className="text-2xl">🌲</span>
-                  <span className="text-2xl">🌳</span>
+                  <div className="animate-bounce" style={{ animationDelay: "0.2s", animationDuration: "3.2s" }}>
+                    <div className="css-tree"></div>
+                  </div>
+                  <span className="text-xl animate-pulse" style={{ animationDelay: "0.8s" }}>
+                    🌿
+                  </span>
+                  <div className="animate-bounce" style={{ animationDelay: "0.7s", animationDuration: "3.8s" }}>
+                    <div className="css-tree"></div>
+                  </div>
+                  <div className="animate-bounce" style={{ animationDelay: "1.2s", animationDuration: "4.2s" }}>
+                    <div className="css-tree"></div>
+                  </div>
                 </div>
               </div>
 
               <div className="absolute left-16 md:left-20 right-16 md:right-20 top-0 bottom-0 bg-gradient-to-b from-blue-400 via-blue-500 to-blue-600 overflow-hidden">
+                {/* Animated fish swimming */}
+                <div className="absolute top-[20%] left-0" style={reducedMotion ? {} : { animation: "swim 8s linear infinite" }}>
+                  <div className="css-fish"></div>
+                </div>
+                <div className="absolute top-[60%] left-0" style={reducedMotion ? {} : { animation: "swim 12s linear infinite", animationDelay: "2s" }}>
+                  <div className="css-fish" style={{ transform: "scaleY(1.1)" }}></div>
+                </div>
+                <div className="absolute top-[40%] left-0" style={reducedMotion ? {} : { animation: "swim 10s linear infinite", animationDelay: "4s" }}>
+                  <div className="css-fish" style={{ transform: "scale(0.9)" }}></div>
+                </div>
+                
+                {/* Dragonflies hovering above water */}
+                <div className="absolute top-[10%] left-[30%]" style={reducedMotion ? {} : { animation: "float 2.5s ease-in-out infinite" }}>
+                  <div className="css-dragonfly"><span></span></div>
+                </div>
+                <div className="absolute top-[15%] right-[25%]" style={reducedMotion ? {} : { animation: "float 3s ease-in-out infinite", animationDelay: "0.5s" }}>
+                  <div className="css-dragonfly"><span></span></div>
+                </div>
+                
+                {/* Butterflies */}
+                <div className="absolute top-[8%] left-[60%]" style={reducedMotion ? {} : { animation: "float 3.5s ease-in-out infinite", animationDelay: "1s" }}>
+                  <div className="css-butterfly"><span></span></div>
+                </div>
+                
                 {/* Water waves animation */}
                 <div className="absolute inset-0 opacity-30">
                   {[...Array(8)].map((_, i) => (
@@ -375,31 +526,59 @@ export default function FrogGame() {
                       >
                         {/* Lily Pad */}
                         <div
-                          className={`w-10 h-10 md:w-12 md:h-12 rounded-full transition-all duration-300 ${
+                          className={`css-lilypad transition-all duration-300 ${
                             isPassed
-                              ? "bg-green-400/60 scale-90"
+                              ? "opacity-60 scale-90"
                               : isCurrent || isNext
-                                ? "bg-green-500 scale-100 shadow-lg ring-4 ring-green-300/50"
-                                : "bg-green-500/80 scale-95"
+                                ? "scale-100 shadow-lg ring-4 ring-green-300/50"
+                                : "opacity-80 scale-95"
                           }`}
+                          style={{ animation: "float 3s ease-in-out infinite" }}
                         >
-                          <div className="absolute inset-0 rounded-full border-2 border-green-600/30" />
-                          <div className="absolute top-1/2 left-1/2 w-1 h-4 bg-green-600/20 -translate-x-1/2 -translate-y-1/2 rotate-45" />
-                          <div className="absolute top-1/2 left-1/2 w-1 h-4 bg-green-600/20 -translate-x-1/2 -translate-y-1/2 -rotate-45" />
+                          {/* Ripple effect around current lily pad */}
+                          {isCurrent && (
+                            <div
+                              className="absolute inset-0 border-2 border-green-400/50"
+                              style={{ 
+                                animation: "ripple 2s ease-out infinite",
+                                borderRadius: '50% 50% 50% 0'
+                              }}
+                            />
+                          )}
 
                           {/* Frog */}
                           {isCurrent && (
-                            <div
-                              className={`absolute inset-0 flex items-center justify-center text-2xl md:text-3xl transition-all duration-500 ${
-                                isJumping
-                                  ? "animate-bounce scale-125"
-                                  : isFalling
-                                    ? "animate-pulse scale-75 opacity-50"
-                                    : ""
-                              }`}
-                            >
-                              🐸
-                            </div>
+                            <>
+                              <div
+                                className={`absolute inset-0 flex items-center justify-center transition-all duration-500 ${
+                                  isJumping
+                                    ? "animate-bounce scale-125"
+                                    : isFalling
+                                      ? "animate-pulse scale-75 opacity-50"
+                                      : ""
+                                }`}
+                              >
+                                {/* Custom CSS Frog */}
+                                <div className="frog-character"></div>
+                              </div>
+                              {/* Splash effect when falling */}
+                              {isFalling && (
+                                <>
+                                  <div
+                                    className="absolute inset-0 text-2xl flex items-center justify-center text-blue-300"
+                                    style={{ animation: "splash 1s ease-out" }}
+                                  >
+                                    💦
+                                  </div>
+                                  <div
+                                    className="absolute inset-0 text-xl flex items-center justify-center text-blue-200"
+                                    style={{ animation: "splash 1s ease-out 0.1s" }}
+                                  >
+                                    💧
+                                  </div>
+                                </>
+                              )}
+                            </>
                           )}
 
                           {/* Start Flag */}
@@ -425,27 +604,35 @@ export default function FrogGame() {
           </Card>
 
           {/* Question Card */}
-          <Card className="p-6 md:p-8 bg-white/95 backdrop-blur h-[400px] md:h-[500px] flex flex-col">
+          <Card 
+            className={`p-6 md:p-8 backdrop-blur h-[400px] md:h-[500px] flex flex-col ${highContrast ? 'bg-white border-black border-4' : 'bg-white/95'}`}
+            role="region"
+            aria-label="Question area"
+          >
             <div className="space-y-4 flex-1 overflow-y-auto">
               <div className="text-center">
                 <div className="flex justify-center gap-2 mb-3 flex-wrap">
-                  <div className="inline-block px-3 py-1.5 bg-secondary/20 rounded-full">
-                    <span className="text-xs md:text-sm font-semibold text-secondary-foreground">
+                  <div className={`inline-block px-3 py-1.5 rounded-full ${highContrast ? 'bg-black text-white' : 'bg-secondary/20'}`}>
+                    <span className="text-xs md:text-sm font-semibold">
                       Question {currentQuestion + 1} of {questions.length}
                     </span>
                   </div>
-                  <div className="inline-block px-3 py-1.5 bg-accent/30 rounded-full">
-                    <span className="text-xs md:text-sm font-semibold text-accent-foreground">
+                  <div className={`inline-block px-3 py-1.5 rounded-full ${highContrast ? 'bg-yellow-400 text-black' : 'bg-accent/30'}`}>
+                    <span className="text-xs md:text-sm font-semibold">
                       {questions[currentQuestion].category}
                     </span>
                   </div>
                 </div>
-                <h2 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground leading-tight break-words">
+                <h2 
+                  className={`text-xl md:text-2xl lg:text-3xl font-bold leading-tight break-words ${highContrast ? 'text-black' : 'text-foreground'}`}
+                  id="current-question"
+                  tabIndex={-1}
+                >
                   {questions[currentQuestion].question}
                 </h2>
               </div>
 
-              <div className="grid gap-2.5">
+              <div className="grid gap-2.5" role="group" aria-labelledby="current-question">
                 {questions[currentQuestion].options.map((option, index) => (
                   <Button
                     key={index}
@@ -455,15 +642,22 @@ export default function FrogGame() {
                     variant={
                       selectedAnswer === index ? (showFeedback === "correct" ? "default" : "destructive") : "outline"
                     }
-                    className={`text-sm md:text-base py-4 md:py-6 transition-all whitespace-normal h-auto min-h-[3rem] text-left ${
+                    className={`text-sm md:text-base py-4 md:py-6 whitespace-normal h-auto min-h-[3rem] text-left relative ${
+                      reducedMotion ? '' : 'transition-all'
+                    } ${
                       selectedAnswer === index && showFeedback === "correct"
-                        ? "bg-primary hover:bg-primary/90 scale-105"
+                        ? `${highContrast ? 'bg-green-600 border-4 border-black' : 'bg-primary hover:bg-primary/90'} ${reducedMotion ? '' : 'scale-105'}`
                         : selectedAnswer === index && showFeedback === "wrong"
-                          ? "bg-destructive hover:bg-destructive/90 scale-95"
-                          : "hover:scale-105 hover:bg-accent hover:text-accent-foreground"
+                          ? `${highContrast ? 'bg-red-600 border-4 border-black' : 'bg-destructive hover:bg-destructive/90'} ${reducedMotion ? '' : 'scale-95'}`
+                          : `${highContrast ? 'border-2 border-black bg-white text-black' : ''} ${reducedMotion ? '' : 'hover:scale-105 hover:bg-accent hover:text-accent-foreground'}`
                     }`}
+                    aria-label={`Option ${index + 1}: ${option}. Press ${index + 1} on your keyboard to select.`}
+                    aria-pressed={selectedAnswer === index}
                   >
-                    {option}
+                    <span className={`absolute left-2 top-2 text-xs font-mono ${highContrast ? 'opacity-100 font-bold' : 'opacity-50'}`}>
+                      {index + 1}
+                    </span>
+                    <span className="pl-6">{option}</span>
                   </Button>
                 ))}
               </div>
@@ -483,6 +677,13 @@ export default function FrogGame() {
                   <p className="text-xs md:text-sm opacity-90 leading-relaxed break-words">
                     {questions[currentQuestion].explanation}
                   </p>
+                </div>
+              )}
+
+              {/* Keyboard Hint */}
+              {!showFeedback && (
+                <div className="text-center text-xs text-muted-foreground/70 mt-2">
+                  💡 Tip: Press 1-{questions[currentQuestion].options.length} on your keyboard to select an answer
                 </div>
               )}
             </div>
