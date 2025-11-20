@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Trophy, RotateCcw } from "lucide-react"
@@ -12,6 +13,8 @@ type Question = {
   category: string
   explanation: string
 }
+
+const QUESTION_TIME_SECONDS = 30
 
 // All available questions from Greener Davis Game
 const allQuestions: Question[] = [
@@ -135,6 +138,21 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled
 }
 
+// Shuffle the options for a question and update correctAnswer index
+function shuffleQuestionOptions(question: Question): Question {
+  const indices = question.options.map((_, idx) => idx)
+  const shuffledIndices = shuffleArray(indices)
+
+  const shuffledOptions = shuffledIndices.map((i) => question.options[i])
+  const newCorrectIndex = shuffledIndices.indexOf(question.correctAnswer)
+
+  return {
+    ...question,
+    options: shuffledOptions,
+    correctAnswer: newCorrectIndex,
+  }
+}
+
 // Select 8 random questions ensuring category diversity
 function selectQuestions(): Question[] {
   const shuffled = shuffleArray(allQuestions)
@@ -159,7 +177,7 @@ function selectQuestions(): Question[] {
     }
   }
 
-  return selected
+  return selected.map(shuffleQuestionOptions)
 }
 
 // Generate random lily pad positions that progress left to right
@@ -187,7 +205,7 @@ export default function FrogGame() {
   const [lilyPadPositions, setLilyPadPositions] = useState<Array<{ left: number; top: number }>>([])
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [score, setScore] = useState(0)
-  const [showFeedback, setShowFeedback] = useState<"correct" | "wrong" | null>(null)
+  const [showFeedback, setShowFeedback] = useState<"correct" | "wrong" | "timeout" | null>(null)
   const [isJumping, setIsJumping] = useState(false)
   const [isFalling, setIsFalling] = useState(false)
   const [gameComplete, setGameComplete] = useState(false)
@@ -199,6 +217,35 @@ export default function FrogGame() {
   const [audioEnabled, setAudioEnabled] = useState(true)
   const [speechEnabled, setSpeechEnabled] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const [timerEnabled, setTimerEnabled] = useState(true)
+  // Per-question lives and timer
+  const [lives, setLives] = useState(3)
+  const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_SECONDS)
+  const [hasAnswered, setHasAnswered] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(true)
+
+  // Reset timer for each new question
+  useEffect(() => {
+    setTimeLeft(QUESTION_TIME_SECONDS)
+    setHasAnswered(false)
+  }, [currentQuestion])
+
+  // Timer countdown effect
+  useEffect(() => {
+    if (!timerEnabled || showFeedback || gameComplete || isPaused || hasAnswered) return;
+    if (timeLeft <= 0) {
+      handleTimeOut();
+      return;
+    }
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => prev > 0 ? prev - 1 : 0);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft, showFeedback, gameComplete, isPaused, timerEnabled, hasAnswered]);
+
+  // Handle what happens when time runs out
+
 
   // Audio feedback functions
   const playSound = (type: 'correct' | 'incorrect' | 'jump' | 'complete') => {
@@ -301,6 +348,40 @@ export default function FrogGame() {
     return () => mediaQuery.removeEventListener('change', handleChange)
   }, [])
 
+  // Reset the timer whenever we go to a new question
+  useEffect(() => {
+    setTimeLeft(QUESTION_TIME_SECONDS)
+  }, [currentQuestion])
+
+  // Handle what happens when time runs out
+  const handleTimeOut = () => {
+    if (showFeedback || questions.length === 0 || hasAnswered || gameComplete) return
+    setSelectedAnswer(null)
+    setShowFeedback("timeout")
+    setIsFalling(true)
+    setHasAnswered(true)
+    playSound("incorrect")
+    setTimeout(() => {
+      setIsFalling(false)
+      setLives(prevLives => {
+        const newLives = prevLives - 1
+        // No lives left → end the game (show results screen)
+        if (newLives <= 0) {
+          setShowFeedback(null)
+          setGameComplete(true)
+          return 0
+        }
+        // Still have lives → stay on SAME question, reset timer
+        setShowFeedback(null)
+        setSelectedAnswer(null)
+        setHasAnswered(false)
+        setTimeLeft(QUESTION_TIME_SECONDS)
+        return newLives
+      })
+    }, 1500)
+
+  };
+  
   // Add keyboard controls
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
@@ -350,45 +431,58 @@ export default function FrogGame() {
   }, [showFeedback, currentQuestion, questions])
 
   const handleAnswer = (answerIndex: number) => {
-    if (showFeedback || questions.length === 0) return
-
-    setSelectedAnswer(answerIndex)
-    const isCorrect = answerIndex === questions[currentQuestion].correctAnswer
-
+    if (showFeedback || questions.length === 0 || gameComplete || hasAnswered) return;
+    setHasAnswered(true);
+    setSelectedAnswer(answerIndex);
+    const isCorrect = answerIndex === questions[currentQuestion].correctAnswer;
     if (isCorrect) {
-      setShowFeedback("correct")
-      setIsJumping(true)
-      setScore(score + 1)
-      playSound('jump')
-      
+      setShowFeedback("correct");
+      setIsJumping(true);
+      setScore(score + 1);
+      playSound('jump');
       setTimeout(() => {
-        playSound('correct')
-      }, 200)
-
+        playSound('correct');
+      }, 200);
       setTimeout(() => {
-        setIsJumping(false)
-        setShowFeedback(null)
-        setSelectedAnswer(null)
-
+        setIsJumping(false);
+        setShowFeedback(null);
+        setSelectedAnswer(null);
+        setHasAnswered(false);
         if (currentQuestion + 1 >= questions.length) {
-          setGameComplete(true)
-          playSound('complete')
+          setGameComplete(true);
+          playSound('complete');
         } else {
-          setCurrentQuestion(currentQuestion + 1)
+          setCurrentQuestion(currentQuestion + 1);
         }
-      }, 1500)
-    } else {
+      }, 1500);
+     } else {
       setShowFeedback("wrong")
       setIsFalling(true)
-      playSound('incorrect')
+      playSound("incorrect")
 
       setTimeout(() => {
         setIsFalling(false)
-        setShowFeedback(null)
-        setSelectedAnswer(null)
-      }, 1500)
+
+        setLives(prevLives => {
+          const newLives = prevLives - 1
+
+          // No lives left → end the game
+          if (newLives <= 0) {
+            setShowFeedback(null)
+            setGameComplete(true)
+            return 0
+          }
+
+          // Still have lives → stay on SAME question, reset timer
+          setShowFeedback(null)
+          setSelectedAnswer(null)
+          setHasAnswered(false)
+          setTimeLeft(QUESTION_TIME_SECONDS)
+          return newLives
+        })
+      }, 1500);
     }
-  }
+  };
 
   const resetGame = () => {
     setCurrentQuestion(0)
@@ -398,22 +492,62 @@ export default function FrogGame() {
     setIsFalling(false)
     setGameComplete(false)
     setSelectedAnswer(null)
-    // Note: questions remain the same for this game session
-    // To get new random questions, the component would need to be remounted
+    setLives(3)
+    setTimeLeft(QUESTION_TIME_SECONDS)
+    setHasAnswered(false)
+
+    setQuestions(selectQuestions())
+    setLilyPadPositions(generateLilyPadPositions())
   }
 
-  // Show loading state while questions are being generated
-  if (questions.length === 0) {
+
+  // Welcome screen
+  if (showWelcome) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 flex items-center justify-center p-4">
-        <div className="text-2xl font-bold text-primary">Loading game...</div>
+      <div className="min-h-screen bg-gradient-to-br from-emerald-100 via-emerald-300 to-lime-300 flex items-center justify-center p-4">
+        <Card className="max-w-xl w-full p-10 text-center shadow-2xl border-4 border-blue-400/40 bg-white/90 relative overflow-hidden">
+          <div className="absolute -top-10 -left-10 w-32 h-32 bg-blue-200 rounded-full blur-2xl opacity-40 animate-pulse" />
+          <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-green-200 rounded-full blur-2xl opacity-40 animate-pulse" />
+          <div className="flex flex-col items-center gap-4 z-10">
+            <div className="frog-character-large mb-2 animate-bounce" style={{ fontSize: 64 }} />
+            <h1 className="text-4xl md:text-5xl font-extrabold text-green-700 drop-shadow mb-2 tracking-tight">
+              Professor Davis River Adventure
+            </h1>
+            <p className="text-lg md:text-xl text-gray-700 mb-4">
+              Help Professor Davis cross the river by answering fun questions about water, recycling, and more!<br/>
+              <span className="inline-block mt-2 text-base text-green-500 font-semibold">Can you get him safely across?</span>
+            </p>
+            <Button
+              size="lg"
+              className="bg-gradient-to-r from-green-800  text-white text-xl px-8 py-6 rounded-full shadow-lg hover:scale-105 transition-transform"
+              onClick={() => {
+                resetGame();
+                setShowWelcome(false);
+              }}
+              aria-label="Start the game"
+            >
+              🚀 Start Adventure
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  // NEW: protect against questions not being loaded yet
+  if (!questions || questions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-sky-300 to-sky-100">
+        <p className="text-lg font-semibold text-sky-900">
+          Loading questions…
+        </p>
       </div>
     )
   }
 
   if (gameComplete) {
     return (
-      <div className={`min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 flex items-center justify-center p-4 font-size-${fontSize} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
+      <div className={`min-h-screen bg-gradient-to-br from-emerald-200 via-emerald-300 to-lime-300 flex items-center justify-center p-4 font-size-${fontSize} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
         <Card 
           className={`max-w-2xl w-full p-8 text-center space-y-6 backdrop-blur ${highContrast ? 'bg-white border-black border-4' : 'bg-white/95'}`}
           role="alert"
@@ -425,34 +559,66 @@ export default function FrogGame() {
             <div className={`frog-character-large ${reducedMotion ? '' : 'animate-bounce'}`}></div>
           </div>
           <h1 className={`text-4xl md:text-5xl font-bold ${highContrast ? 'text-black' : 'text-primary'}`}>
-            Congratulations! 🎉
+            {lives === 0 ? 'Game Over' : 'Congratulations! 🎉'}
           </h1>
           <p className={`text-2xl md:text-3xl font-semibold ${highContrast ? 'text-black' : 'text-foreground'}`}>
-            Professor Davis crossed the river!
+            {lives === 0
+              ? 'Professor Davis ran out of lives!'
+              : 'Professor Davis crossed the river!'}
           </p>
           <p className={`text-xl ${highContrast ? 'text-black' : 'text-muted-foreground'}`}>
             You answered <span className={`font-bold ${highContrast ? 'text-black underline' : 'text-primary'}`}>{score}</span> out of{" "}
             <span className="font-bold">{questions.length}</span> questions correctly!
           </p>
           <p className={`text-lg italic ${highContrast ? 'text-black' : 'text-foreground/80'}`}>
-            🌊 You're now a Water Conservation Champion! Keep protecting our precious water! 💧
+            {lives === 0
+              ? '💧 Try again to help Professor Davis cross the river!'
+              : '🌊 You\'re now a Water Conservation Champion! Keep protecting our precious water! 💧'}
           </p>
-          <Button 
-            onClick={resetGame} 
-            size="lg" 
-            className={`text-lg px-8 py-6 ${highContrast ? 'bg-black text-white border-4 hover:bg-gray-800' : 'bg-primary hover:bg-primary/90'}`}
-            aria-label="Play the game again from the beginning"
-          >
-            <RotateCcw className="mr-2 h-5 w-5" aria-hidden="true" />
-            Play Again
-          </Button>
+          <div className="flex flex-col gap-4 items-center mt-4">
+            <Button 
+              onClick={resetGame} 
+              size="lg" 
+              className={`text-lg px-8 py-6 ${highContrast ? 'bg-black text-white border-4 hover:bg-gray-800' : 'bg-primary hover:bg-primary/90'}`}
+              aria-label="Play the game again from the beginning"
+            >
+              <RotateCcw className="mr-2 h-5 w-5" aria-hidden="true" />
+              Play Again
+            </Button>
+            <Button
+              onClick={() => setShowWelcome(true)}
+              size="sm"
+              className="bg-gradient-to-r from-green-800 text-white text-xl px-8 py-6 rounded-full shadow-lg hover:scale-105 transition-transform transition-all duration-300"
+              aria-label="Back to Welcome Screen"
+            >
+              ⬅ Home Screen
+            </Button>
+          </div>
         </Card>
       </div>
     )
   }
 
   return (
-    <div className={`min-h-screen bg-gradient-to-b from-sky-300 to-sky-100 p-4 md:p-8 font-size-${fontSize} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
+    <div className={`min-h-screen bg-gradient-to-br from-emerald-200 via-emerald-300 to-lime-300 p-4 md:p-8 font-size-${fontSize} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
+      {/* Pause Screen Overlay */}
+      {isPaused && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur rounded-lg shadow-lg">
+          <div className="flex flex-col items-center">
+            <div className="frog-character-large mb-4 animate-bounce" style={{ fontSize: 64 }} />
+            <h2 className="text-2xl font-bold mb-2 text-green-700">Game Paused</h2>
+            <p className="mb-4 text-gray-700">Take a break! When you're ready, resume your adventure.</p>
+            <Button
+              size="lg"
+              className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-full shadow-lg hover:scale-105 transition-transform"
+              onClick={() => setIsPaused(false)}
+              aria-label="Resume game"
+            >
+              ▶ Resume
+            </Button>
+          </div>
+        </div>
+      )}
       {/* Skip to main content link for keyboard users */}
       <a 
         href="#main-content" 
@@ -464,6 +630,7 @@ export default function FrogGame() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex flex-wrap justify-center gap-2 mb-4">
+        
             <Button
               variant="outline"
               size="sm"
@@ -503,7 +670,7 @@ export default function FrogGame() {
               aria-label={`Current font size: ${fontSize}. Click to change`}
               title="Adjust font size"
             >
-              � Text: {fontSize === 'small' ? 'S' : fontSize === 'medium' ? 'M' : fontSize === 'large' ? 'L' : 'XL'}
+              Text: {fontSize === 'small' ? 'S' : fontSize === 'medium' ? 'M' : fontSize === 'large' ? 'L' : 'XL'}
             </Button>
             <Button
               variant="outline"
@@ -574,11 +741,11 @@ export default function FrogGame() {
         <div className="grid md:grid-cols-2 gap-8">
           {/* River Visualization */}
           <Card 
-            className={`p-6 bg-sky-200 border-4 overflow-hidden relative ${highContrast ? 'border-black border-8' : 'border-primary/20'}`}
+            className={`p-6 bg-sky-200 border-4 overflow-hidden relative h-[520px] md:h-[620px] ${highContrast ? 'border-black border-8' : 'border-primary/20'}`}
             role="img" 
             aria-label={`River crossing visualization. Professor Davis has crossed ${score} out of ${questions.length} lily pads.`}
           >
-            <div className="relative h-[400px] md:h-[500px]">
+            <div className="relative h-full">
               {/* Left Riverbank with grass and trees */}
               <div className="absolute left-0 top-0 bottom-0 w-16 md:w-20 bg-gradient-to-r from-green-700 to-green-600 rounded-l-lg border-r-4 border-green-800">
                 <div className="absolute inset-0 flex flex-col justify-around items-center py-4">
@@ -594,6 +761,16 @@ export default function FrogGame() {
                   <span className={reducedMotion ? "text-xl" : "text-xl animate-pulse"} style={reducedMotion ? {} : { animationDelay: "0.3s" }}>
                     🌿
                   </span>
+                  <div className="absolute bottom-100 left-2 md:left-3">
+                    <Image
+                      src="./graphics 2[21]/ff_bush.png"
+                      alt="Bush near the riverbank"
+                      width={40}
+                      height={44}
+                      className={reducedMotion ? "drop-shadow" : "drop-shadow animate-pulse"}
+                    />
+                  </div>
+
                 </div>
               </div>
 
@@ -611,6 +788,15 @@ export default function FrogGame() {
                   </div>
                   <div className="animate-bounce" style={{ animationDelay: "1.2s", animationDuration: "4.2s" }}>
                     <div className="css-tree"></div>
+                  </div>
+                  <div className="absolute bottom-35 md:right-4">
+                    <Image
+                      src="./graphics 2[21]/ff_bush.png"
+                      alt="Bush near the riverbank"
+                      width={40}
+                      height={44}
+                      className={reducedMotion ? "drop-shadow" : "drop-shadow animate-pulse"}
+                    />
                   </div>
                 </div>
               </div>
@@ -761,7 +947,7 @@ export default function FrogGame() {
 
           {/* Question Card */}
           <Card 
-            className={`p-6 md:p-8 backdrop-blur h-[400px] md:h-[500px] flex flex-col ${highContrast ? 'bg-white border-black border-4' : 'bg-white/95'}`}
+            className={`p-6 md:p-8 backdrop-blur h-[520px] md:h-[620px] flex flex-col ${highContrast ? 'bg-white border-black border-4' : 'bg-white/95'}`}
             role="region"
             aria-label="Question area"
           >
@@ -800,6 +986,51 @@ export default function FrogGame() {
                     </Button>
                   )}
                 </div>
+              </div>
+
+              {/* Timer Bar, Lives, and Countdown, with toggle button */}
+              <div className="flex items-center justify-center mb-2 gap-2">
+                {/* Lives display */}
+                <div className="flex items-center mr-3" aria-label="Lives left">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <span
+                      key={i}
+                      className={
+                        "mx-0.5 text-xl transition-opacity " +
+                        (i < lives
+                          ? "text-green-600 opacity-100"
+                          : "text-gray-400 opacity-20")
+                      }
+                      role="img"
+                      aria-label={i < lives ? "remaining life" : "lost life"}
+                    >
+                      🐸
+                    </span>
+                  ))}
+                </div>
+                {timerEnabled && (
+                  <>
+                    <div className="w-full max-w-xs h-4 bg-gray-200 rounded-full overflow-hidden mr-3" aria-label="Time left">
+                      <div
+                        className={`h-full ${timeLeft > 5 ? 'bg-green-400' : 'bg-red-400'} transition-all duration-500`}
+                        style={{ width: `${(timeLeft / QUESTION_TIME_SECONDS) * 100}%` }}
+                      />
+                    </div>
+                    <span className={`font-mono text-lg ${timeLeft > 5 ? 'text-green-700' : 'text-red-600'} min-w-[2ch] text-center`} aria-live="polite">
+                      {timeLeft}
+                    </span>
+                    <span className="ml-1 text-xs text-muted-foreground">sec</span>
+                  </>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTimerEnabled((prev) => !prev)}
+                  aria-label={timerEnabled ? "Disable timer" : "Enable timer"}
+                  title={timerEnabled ? "Turn timer off" : "Turn timer on"}
+                >
+                  {timerEnabled ? "⏱️ Timer On" : "⏸️ Timer Off"}
+                </Button>
               </div>
 
               <div className="grid gap-2.5" role="group" aria-labelledby="current-question">
@@ -859,6 +1090,32 @@ export default function FrogGame() {
             </div>
           </Card>
         </div>
+              {/* Bottom controls: Pause + Home */}
+      <div className="mt-6 flex flex-col md:flex-row items-center justify-center gap-3">
+        <Button
+          size="lg"
+          className="w-full md:w-auto px-8 rounded-full bg-gradient-to-r text-white shadow-md hover:shadow-lg hover:brightness-110 transition-all"
+          onClick={() => setShowWelcome(true)}
+          aria-label="Back to home screen"
+          title="Back to home screen"
+        >
+          🏠 Home Screen
+        </Button>
+        
+        <Button
+          size="lg"
+          className="w-full md:w-auto px-8 rounded-full shadow-md hover:shadow-lg transition-all"
+          variant="outline"
+          onClick={() => setIsPaused((prev) => !prev)}
+          aria-label={isPaused ? "Resume game" : "Pause game"}
+          title={isPaused ? "Resume game" : "Pause game"}
+        >
+          {isPaused ? "▶️ Resume" : "⏸️ Pause"} Game
+        </Button>
+
+        
+      </div>
+
       </div>
     </div>
   )
