@@ -224,6 +224,7 @@ export default function FrogGame() {
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_SECONDS)
   const [hasAnswered, setHasAnswered] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
+  const [questionStarted, setQuestionStarted] = useState(false)
 
   // Reset timer for each new question
   useEffect(() => {
@@ -233,7 +234,7 @@ export default function FrogGame() {
 
   // Timer countdown effect
   useEffect(() => {
-    if (!timerEnabled || showFeedback || gameComplete || isPaused || hasAnswered) return;
+    if (!timerEnabled || !questionStarted || showFeedback || gameComplete || isPaused || hasAnswered) return;
     if (timeLeft <= 0) {
       handleTimeOut();
       return;
@@ -242,60 +243,144 @@ export default function FrogGame() {
       setTimeLeft((prev) => prev > 0 ? prev - 1 : 0);
     }, 1000);
     return () => clearInterval(timer);
-  }, [timeLeft, showFeedback, gameComplete, isPaused, timerEnabled, hasAnswered]);
+  }, [timeLeft, showFeedback, gameComplete, isPaused, timerEnabled, hasAnswered, questionStarted]);
 
   // Handle what happens when time runs out
 
 
   // Audio feedback functions
-  const playSound = (type: 'correct' | 'incorrect' | 'jump' | 'complete') => {
-    if (!audioEnabled) return
-    
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const oscillator = audioContext.createOscillator()
-    const gainNode = audioContext.createGain()
-    
-    oscillator.connect(gainNode)
-    gainNode.connect(audioContext.destination)
-    
-    switch (type) {
-      case 'correct':
-        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime) // C5
-        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1) // E5
-        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2) // G5
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
-        oscillator.start(audioContext.currentTime)
-        oscillator.stop(audioContext.currentTime + 0.3)
-        break
-      case 'incorrect':
-        oscillator.frequency.setValueAtTime(200, audioContext.currentTime)
-        oscillator.frequency.setValueAtTime(150, audioContext.currentTime + 0.1)
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2)
-        oscillator.start(audioContext.currentTime)
-        oscillator.stop(audioContext.currentTime + 0.2)
-        break
-      case 'jump':
-        oscillator.frequency.setValueAtTime(400, audioContext.currentTime)
-        oscillator.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.1)
-        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime)
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1)
-        oscillator.start(audioContext.currentTime)
-        oscillator.stop(audioContext.currentTime + 0.1)
-        break
-      case 'complete':
-        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime)
-        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.15)
-        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.3)
-        oscillator.frequency.setValueAtTime(1046.50, audioContext.currentTime + 0.45)
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.6)
-        oscillator.start(audioContext.currentTime)
-        oscillator.stop(audioContext.currentTime + 0.6)
-        break
+ const playSound = (
+  type:
+    | "correct"
+    | "incorrect"
+    | "jump"
+    | "complete"
+    | "lifeLost"
+    | "gameOver"
+    | "startup"
+) => {
+  if (!audioEnabled) return
+  if (typeof window === "undefined") return
+
+  const AudioCtx =
+    (window as any).AudioContext || (window as any).webkitAudioContext
+  const audioContext = new AudioCtx()
+  const osc = audioContext.createOscillator()
+  const gain = audioContext.createGain()
+
+  osc.connect(gain)
+  gain.connect(audioContext.destination)
+
+  const t0 = audioContext.currentTime
+
+  switch (type) {
+    // Correct: 3 quick ascending notes in a major chord (happy “yay!”)
+    case "correct": {
+      osc.type = "triangle"
+      osc.frequency.setValueAtTime(523.25, t0)        // C5
+      osc.frequency.setValueAtTime(659.25, t0 + 0.08) // E5
+      osc.frequency.setValueAtTime(783.99, t0 + 0.16) // G5
+
+      gain.gain.setValueAtTime(0.3, t0)
+      gain.gain.exponentialRampToValueAtTime(0.01, t0 + 0.35)
+
+      osc.start(t0)
+      osc.stop(t0 + 0.35)
+      break
+    }
+
+    // Jump: bouncy, light “boop” that slides up in pitch
+    case "jump": {
+      osc.type = "square"
+      osc.frequency.setValueAtTime(400, t0)
+      osc.frequency.exponentialRampToValueAtTime(800, t0 + 0.12)
+
+      gain.gain.setValueAtTime(0.22, t0)
+      gain.gain.exponentialRampToValueAtTime(0.01, t0 + 0.15)
+
+      osc.start(t0)
+      osc.stop(t0 + 0.15)
+      break
+    }
+
+    // Wrong: “oops” – 2 short descending notes (not scary)
+    case "incorrect": {
+      osc.type = "sine"
+      osc.frequency.setValueAtTime(392.0, t0)        // G4
+      osc.frequency.setValueAtTime(329.63, t0 + 0.12) // E4
+
+      gain.gain.setValueAtTime(0.2, t0)
+      gain.gain.exponentialRampToValueAtTime(0.01, t0 + 0.35)
+
+      osc.start(t0)
+      osc.stop(t0 + 0.35)
+      break
+    }
+
+    // Life lost: longer descending “waaah” + light blip at the end
+     case "lifeLost": {
+      osc.type = "triangle"
+      // small downward chirp
+      osc.frequency.setValueAtTime(660, t0)              // E5
+      osc.frequency.exponentialRampToValueAtTime(440, t0 + 0.08) // A4
+
+      gain.gain.setValueAtTime(0.22, t0)
+      gain.gain.exponentialRampToValueAtTime(0.01, t0 + 0.18)
+
+      osc.start(t0)
+      osc.stop(t0 + 0.18)
+      break
+    }
+
+    // Game over: slow 3-note descending melody (gentle sad)
+    case "gameOver": {
+      osc.type = "sine"
+      osc.frequency.setValueAtTime(523.25, t0)        // C5
+      osc.frequency.setValueAtTime(440.0, t0 + 0.4)   // A4
+      osc.frequency.setValueAtTime(349.23, t0 + 0.8)  // F4
+
+      gain.gain.setValueAtTime(0.28, t0)
+      gain.gain.exponentialRampToValueAtTime(0.01, t0 + 1.4)
+
+      osc.start(t0)
+      osc.stop(t0 + 1.4)
+      break
+    }
+
+    // Win / complete: 4-note ascending “ta-da!” fanfare
+    case "complete": {
+      osc.type = "triangle"
+      osc.frequency.setValueAtTime(523.25, t0)        // C5
+      osc.frequency.setValueAtTime(659.25, t0 + 0.1)  // E5
+      osc.frequency.setValueAtTime(783.99, t0 + 0.2)  // G5
+      osc.frequency.setValueAtTime(1046.5, t0 + 0.3)  // C6
+
+      gain.gain.setValueAtTime(0.3, t0)
+      gain.gain.exponentialRampToValueAtTime(0.01, t0 + 0.7)
+
+      osc.start(t0)
+      osc.stop(t0 + 0.7)
+      break
+    }
+
+    // Startup: friendly little welcome jingle
+    case "startup": {
+      osc.type = "triangle"
+      osc.frequency.setValueAtTime(392.0, t0)        // G4
+      osc.frequency.setValueAtTime(523.25, t0 + 0.1) // C5
+      osc.frequency.setValueAtTime(659.25, t0 + 0.2) // E5
+      osc.frequency.setValueAtTime(587.33, t0 + 0.3) // D5
+
+      gain.gain.setValueAtTime(0.24, t0)
+      gain.gain.exponentialRampToValueAtTime(0.01, t0 + 0.6)
+
+      osc.start(t0)
+      osc.stop(t0 + 0.6)
+      break
     }
   }
+}
+
 
   // Text-to-speech function
   const speak = (text: string) => {
@@ -369,6 +454,8 @@ export default function FrogGame() {
         if (newLives <= 0) {
           setShowFeedback(null)
           setGameComplete(true)
+          // play game over sound
+          playSound('gameOver')
           return 0
         }
         // Still have lives → stay on SAME question, reset timer
@@ -376,6 +463,8 @@ export default function FrogGame() {
         setSelectedAnswer(null)
         setHasAnswered(false)
         setTimeLeft(QUESTION_TIME_SECONDS)
+        // play life lost sound
+        playSound('lifeLost')
         return newLives
       })
     }, 1500)
@@ -470,6 +559,8 @@ export default function FrogGame() {
           if (newLives <= 0) {
             setShowFeedback(null)
             setGameComplete(true)
+            // play game over sound
+            playSound('gameOver')
             return 0
           }
 
@@ -478,6 +569,8 @@ export default function FrogGame() {
           setSelectedAnswer(null)
           setHasAnswered(false)
           setTimeLeft(QUESTION_TIME_SECONDS)
+          // play life lost sound
+          playSound('lifeLost')
           return newLives
         })
       }, 1500);
@@ -511,7 +604,7 @@ export default function FrogGame() {
           <div className="flex flex-col items-center gap-4 z-10">
             <div className="frog-character-large mb-2 animate-bounce" style={{ fontSize: 64 }} />
             <h1 className="text-4xl md:text-5xl font-extrabold text-green-700 drop-shadow mb-2 tracking-tight">
-              Professor Davis River Adventure
+              Professor Davis Green's Adventure
             </h1>
             <p className="text-lg md:text-xl text-gray-700 mb-4">
               Help Professor Davis cross the river by answering fun questions about water, recycling, and more!<br/>
@@ -523,6 +616,7 @@ export default function FrogGame() {
               onClick={() => {
                 resetGame();
                 setShowWelcome(false);
+                playSound('startup');
               }}
               aria-label="Start the game"
             >
@@ -601,16 +695,44 @@ export default function FrogGame() {
 
   return (
     <div className={`min-h-screen bg-gradient-to-br from-emerald-200 via-emerald-300 to-lime-300 p-4 md:p-8 font-size-${fontSize} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
-      {/* Pause Screen Overlay */}
-      {isPaused && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur rounded-lg shadow-lg">
-          <div className="flex flex-col items-center">
-            <div className="frog-character-large mb-4 animate-bounce" style={{ fontSize: 64 }} />
-            <h2 className="text-2xl font-bold mb-2 text-green-700">Game Paused</h2>
-            <p className="mb-4 text-gray-700">Take a break! When you're ready, resume your adventure.</p>
+      {/* Ready? Overlay - shown before first question starts */}
+      {!questionStarted && currentQuestion === 0 && !gameComplete && !showWelcome && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur rounded-lg shadow-lg p-4 overflow-y-auto">
+          <div className="flex flex-col items-center gap-3 sm:gap-4">
+            <div className="frog-character-large mb-2 sm:mb-4 animate-bounce" style={{ fontSize: "clamp(48px, 12vw, 64px)" }} />
+            <h2 className="text-xl sm:text-2xl font-bold text-green-700">Ready?</h2>
+            <div className="text-sm sm:text-base text-gray-800 bg-white/70 p-4 sm:p-6 rounded-xl shadow-md w-full max-w-xs max-w-sm sm:max-w-md md:max-w-lg space-y-2">
+              <p className="text-sm sm:text-base"><strong>You have 3 frog lives</strong> 🐸🐸🐸</p>
+              <p className="text-xs sm:text-sm">⏱️ You get 30 seconds per question</p>
+              <p className="text-xs sm:text-sm">⏰ If time runs out, you lose a life</p>
+              <p className="text-xs sm:text-sm">💧 If you get a wrong answer, you lose a life</p>
+              <p className="text-xs sm:text-sm">🎮 Tap an answer or press 1–4 on keyboard</p>
+            </div>
             <Button
               size="lg"
-              className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-full shadow-lg hover:scale-105 transition-transform"
+              className="bg-green-600 hover:bg-green-700 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-full shadow-lg hover:scale-105 transition-transform text-sm sm:text-base"
+              onClick={() => {
+                setQuestionStarted(true)
+                playSound('startup')
+              }}
+              aria-label={`Start Question 1 of ${questions.length}`}
+            >
+              🚀 Start Question 1
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Pause Screen Overlay */}
+      {isPaused && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur rounded-lg shadow-lg p-4">
+          <div className="flex flex-col items-center gap-3 sm:gap-4">
+            <div className="frog-character-large mb-2 sm:mb-4 animate-bounce" style={{ fontSize: "clamp(48px, 12vw, 64px)" }} />
+            <h2 className="text-xl sm:text-2xl font-bold text-green-700">Game Paused</h2>
+            <p className="mb-2 sm:mb-4 text-sm sm:text-base text-gray-700 text-center max-w-xs">Take a break! When you're ready, resume your adventure.</p>
+            <Button
+              size="lg"
+              className="bg-green-600 hover:bg-green-700 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-full shadow-lg hover:scale-105 transition-transform text-sm sm:text-base"
               onClick={() => setIsPaused(false)}
               aria-label="Resume game"
             >
@@ -626,7 +748,7 @@ export default function FrogGame() {
       >
         Skip to game content
       </a>
-      <div className="max-w-6xl mx-auto" id="main-content">
+      <div className="max-w-7xl mx-auto" id="main-content">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex flex-wrap justify-center gap-2 mb-4">
@@ -707,8 +829,8 @@ export default function FrogGame() {
               </Button>
             )}
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2 text-balance">
-            Professor Davis's River Adventure
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary mb-2 text-balance">
+            Professors Dave’s green’s adventure
           </h1>
           <p className="text-lg md:text-xl text-foreground/80">
             Help Professor Davis cross the river by answering questions!
@@ -741,7 +863,7 @@ export default function FrogGame() {
         <div className="grid md:grid-cols-2 gap-8">
           {/* River Visualization */}
           <Card 
-            className={`p-6 bg-sky-200 border-4 overflow-hidden relative h-[520px] md:h-[620px] ${highContrast ? 'border-black border-8' : 'border-primary/20'}`}
+            className={`p-4 sm:p-6 bg-sky-200 border-4 overflow-hidden relative h-[360px] sm:h-[520px] lg:h-[640px] 2xl:h-[720px] ${highContrast ? 'border-black border-8' : 'border-primary/20'}`}
             role="img" 
             aria-label={`River crossing visualization. Professor Davis has crossed ${score} out of ${questions.length} lily pads.`}
           >
@@ -761,9 +883,9 @@ export default function FrogGame() {
                   <span className={reducedMotion ? "text-xl" : "text-xl animate-pulse"} style={reducedMotion ? {} : { animationDelay: "0.3s" }}>
                     🌿
                   </span>
-                  <div className="absolute bottom-100 left-2 md:left-3">
+                  <div className="absolute bottom-120 left-2 md:left-3">
                     <Image
-                      src="./graphics 2[21]/ff_bush.png"
+                      src="ff_bush.png"
                       alt="Bush near the riverbank"
                       width={40}
                       height={44}
@@ -791,7 +913,7 @@ export default function FrogGame() {
                   </div>
                   <div className="absolute bottom-35 md:right-4">
                     <Image
-                      src="./graphics 2[21]/ff_bush.png"
+                      src="ff_bush.png"
                       alt="Bush near the riverbank"
                       width={40}
                       height={44}
@@ -867,6 +989,7 @@ export default function FrogGame() {
                         }}
                       >
                         {/* Lily Pad */}
+                        <div className="sm:scale-100 scale-75">
                         <div
                           className={`css-lilypad transition-all duration-300 ${
                             isPassed
@@ -937,6 +1060,7 @@ export default function FrogGame() {
                             </div>
                           )}
                         </div>
+                        </div>
                       </div>
                     )
                   })}
@@ -947,7 +1071,7 @@ export default function FrogGame() {
 
           {/* Question Card */}
           <Card 
-            className={`p-6 md:p-8 backdrop-blur h-[520px] md:h-[620px] flex flex-col ${highContrast ? 'bg-white border-black border-4' : 'bg-white/95'}`}
+            className={`p-4 sm:p-6 backdrop-blur h-[420px] sm:h-[520px] lg:h-[640px] 2xl:h-[720px] flex flex-col ${highContrast ? 'bg-white border-black border-4' : 'bg-white/95'}`}
             role="region"
             aria-label="Question area"
           >
@@ -1066,14 +1190,19 @@ export default function FrogGame() {
               {/* Feedback Messages */}
               {showFeedback && (
                 <div
-                  className={`text-center p-3 rounded-lg animate-in fade-in slide-in-from-bottom-4 ${
-                    showFeedback === "correct" ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive"
+                  className={`text-center p-4 rounded-lg animate-in fade-in slide-in-from-bottom-4 ${
+                    showFeedback === "correct" ? "bg-green-100/80 text-green-700 border-2 border-green-400" : "bg-destructive/20 text-destructive"
                   }`}
                 >
-                  <p className="font-semibold text-base md:text-lg mb-1.5">
+                  <p className="font-bold text-lg md:text-xl mb-2">
                     {showFeedback === "correct"
-                      ? "🎉 Great job! Professor Davis jumps forward!"
+                      ? "🎉 Good Job! Awesome Work! 🌟"
                       : "💦 Oops! Try again - Professor Davis fell in the water!"}
+                  </p>
+                  <p className="font-semibold text-sm md:text-base mb-2">
+                    {showFeedback === "correct"
+                      ? "Professor Davis jumps forward! Keep it up!"
+                      : ""}
                   </p>
                   <p className="text-xs md:text-sm opacity-90 leading-relaxed break-words">
                     {questions[currentQuestion].explanation}
@@ -1083,7 +1212,7 @@ export default function FrogGame() {
 
               {/* Keyboard Hint */}
               {!showFeedback && (
-                <div className="text-center text-xs text-muted-foreground/70 mt-2">
+                <div className="text-center text-sm md:text-base text-muted-foreground/80 mt-2">
                   💡 Tip: Press 1-{questions[currentQuestion].options.length} on your keyboard to select an answer
                 </div>
               )}

@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
-  basePath: '/Frog-Game',
+  basePath: process.env.NODE_ENV === "production" ? "/Frog-Game" : "",
   eslint: {
     ignoreDuringBuilds: true,
   },
