@@ -830,7 +830,7 @@ export default function FrogGame() {
             )}
           </div>
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary mb-2 text-balance">
-            Professors Dave’s green’s adventure
+            Professors Davis green’s adventure
           </h1>
           <p className="text-lg md:text-xl text-foreground/80">
             Help Professor Davis cross the river by answering questions!
