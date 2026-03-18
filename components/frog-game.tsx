@@ -15,6 +15,9 @@ type Question = {
 }
 
 const QUESTION_TIME_SECONDS = 30
+// How long to keep the feedback + explanation visible after answering.
+// (Previously 1500ms — a bit too quick for students to read.)
+const FEEDBACK_DISPLAY_MS = 3000
 
 // All available questions from Greener Davis Game
 const allQuestions: Question[] = [
@@ -467,7 +470,7 @@ export default function FrogGame() {
         playSound('lifeLost')
         return newLives
       })
-    }, 1500)
+    }, FEEDBACK_DISPLAY_MS)
 
   };
   
@@ -543,7 +546,7 @@ export default function FrogGame() {
         } else {
           setCurrentQuestion(currentQuestion + 1);
         }
-      }, 1500);
+      }, FEEDBACK_DISPLAY_MS);
      } else {
       setShowFeedback("wrong")
       setIsFalling(true)
@@ -573,7 +576,7 @@ export default function FrogGame() {
           playSound('lifeLost')
           return newLives
         })
-      }, 1500);
+      }, FEEDBACK_DISPLAY_MS);
     }
   };
 
